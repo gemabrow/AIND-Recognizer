@@ -75,29 +75,32 @@ class SelectorBIC(ModelSelector):
         :return: GaussianHMM object
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        best_model = None
+        best_n = self.n_constant
         min_bic = float('inf')
 
         for n in range(self.min_n_components, self.max_n_components + 1):
             try:
-                # try fitting model with n_components
+                # try fitting hmm_model with n_states
                 model = self.base_model(n)
                 # score likelihood
-                log_l = model.score(self.X, self.lengths)
-
-                d = model.n_features
-                # ref: https://ai-nd.slack.com/files/U3V9K6UHL/F4S90AJFR/number_of_parameters_in_bic.txt
+                logL = model.score(self.X, self.lengths)
+                # d: number of features/data points
+                d = len(self.X[0])
                 # since initial distribution estimated,
                 # not all parameters are considered free
                 p = n ** 2 + 2 * d * n - 1
-                # BIC = -2 * logL + p * logN
-                bic_score = -2 * log_l + p * math.log(d)
+                # BIC = -2 * log L + p * log N
+                # L: the likelihood of the fitted model
+                # p: the number of fre parameters
+                # N: the number of data points
+                # pylint:disable=maybe-no-member
+                bic_score = -2 * logL + p * np.log(d)
                 if bic_score < min_bic:
-                    best_model, min_bic = model, bic_score
+                    best_n, min_bic = n, bic_score
             except Exception as e:
                 pass
 
-        return best_model
+        return self.base_model(best_n)
 
 
 class SelectorDIC(ModelSelector):
@@ -109,32 +112,37 @@ class SelectorDIC(ModelSelector):
     https://pdfs.semanticscholar.org/ed3d/7c4a5f607201f3848d4c02dd9ba17c791fc2.pdf
     DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
     '''
+    # total_score = sum(model.score(_x, _l)
+    #                   for _x, _l in _hwords)
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        best_model = None
+        best_n = self.n_constant
         max_dic = float('-inf')
-        _hwords = [self.hwords[word]
-                   for word in self.words
-                   if word != self.this_word]
+
+        other_words = {word for word in self.words
+                       if word != self.this_word}
 
         for n in range(self.min_n_components, self.max_n_components + 1):
             try:
-                # try fitting model with n_components
                 model = self.base_model(n)
                 # score likelihood of this_word
                 score = model.score(self.X, self.lengths)
-                # score likelihood of all other words
-                total_score = sum(model.score(_x, _l)
-                                  for _x, _l in _hwords)
+                # score X and lengths of all other words and return sum
+                sum_other = 0
+
+                for word in other_words:
+                    other_x, other_ls = self.hwords[word]
+                    sum_other += model.score(other_x, other_ls)
                 # DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
-                dic_score = score - total_score / len(_hwords)
-                if dic_score < max_dic:
-                    best_model, max_dic = model, dic_score
+                dic_score = score - (sum_other / len(other_words))
+                
+                if dic_score > max_dic:
+                    best_n, max_dic = n, dic_score
             except Exception as e:
                 pass
 
-        return best_model
+        return self.base_model(best_n)
 
 
 class SelectorCV(ModelSelector):
@@ -144,34 +152,33 @@ class SelectorCV(ModelSelector):
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        best_model = None
-        max_avg_score = None
+        best_n = self.n_constant
+        max_avg_score = float('-inf')
 
         for n in range(self.min_n_components, self.max_n_components + 1):
             try:
-                # try fitting model with n_components
+                _seq = self.sequences
                 model = self.base_model(n)
-                fold_scores = []
-                if len(self.sequences) >= 2:
-                    _folds = min(len(self.sequences), 3)
-                    _sq = self.sequences
+                scores = []
 
+                if len(_seq) >= 2:
+                    _folds = min(len(_seq), 3)
                     split_method = KFold(n_splits=_folds)
 
-                    for train_idx, test_idx in split_method.split(_sq):
-                        self.X, self.lengths = combine_sequences(train_idx, _sq)
-                        test_X, test_lengths = combine_sequences(test_idx, _sq)
+                    for train_idx, test_idx in split_method.split(_seq):
+                        self.X, self.lengths = combine_sequences(train_idx,
+                                                                 _seq)
+                        test_X, test_lengths = combine_sequences(test_idx,
+                                                                 _seq)
                         # append scores for averaging
-                        fold_scores.append(model.score(test_X, test_lengths))
-                    avg_score = map(np.mean, fold_scores)
+                        scores.append(model.score(test_X, test_lengths))
                 else:
-                    avg_score = model.score(self.X, self.lengths)
+                    scores.append(model.score(self.X, self.lengths))
+
+                avg_score = np.mean(scores)
                 if avg_score > max_avg_score:
-                    best_model, max_avg_score = model, avg_score
+                    best_n, max_avg_score = n, avg_score
             except Exception as e:
                 pass
 
-        best_num_components = self.n_constant
-        if max_avg_score:
-            best_num_components = best_model.n_components[max_avg_score]
-        return self.base_model(best_num_components)
+        return self.base_model(best_n)
