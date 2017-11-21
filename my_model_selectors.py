@@ -83,7 +83,7 @@ class SelectorBIC(ModelSelector):
                 # try fitting model with n_components
                 model = self.base_model(n)
                 # score likelihood
-                logL = model.score(self.X, self.lengths)
+                log_l = model.score(self.X, self.lengths)
 
                 d = model.n_features
                 # ref: https://ai-nd.slack.com/files/U3V9K6UHL/F4S90AJFR/number_of_parameters_in_bic.txt
@@ -91,10 +91,10 @@ class SelectorBIC(ModelSelector):
                 # not all parameters are considered free
                 p = n ** 2 + 2 * d * n - 1
                 # BIC = -2 * logL + p * logN
-                bic_score = -2 * log_l + p * np.log(d)
+                bic_score = -2 * log_l + p * math.log(d)
                 if bic_score < min_bic:
                     best_model, min_bic = model, bic_score
-            except:
+            except Exception as e:
                 pass
 
         return best_model
@@ -114,21 +114,24 @@ class SelectorDIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         best_model = None
         max_dic = float('-inf')
-        hwords = [self.hwords[word] for word in self.words if word != self.this_word]
+        _hwords = [self.hwords[word]
+                   for word in self.words
+                   if word != self.this_word]
 
         for n in range(self.min_n_components, self.max_n_components + 1):
             try:
                 # try fitting model with n_components
                 model = self.base_model(n)
-                # score likelihood of self.this_word
+                # score likelihood of this_word
                 score = model.score(self.X, self.lengths)
+                # score likelihood of all other words
                 total_score = sum(model.score(_x, _l)
-                                  for _x, _l in hwords)
+                                  for _x, _l in _hwords)
                 # DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
-                dic_score = score - total_score / len(hwords)
+                dic_score = score - total_score / len(_hwords)
                 if dic_score < max_dic:
                     best_model, max_dic = model, dic_score
-            except:
+            except Exception as e:
                 pass
 
         return best_model
@@ -141,6 +144,34 @@ class SelectorCV(ModelSelector):
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
+        best_model = None
+        max_avg_score = None
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
+        for n in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                # try fitting model with n_components
+                model = self.base_model(n)
+                fold_scores = []
+                if len(self.sequences) >= 2:
+                    _folds = min(len(self.sequences), 3)
+                    _sq = self.sequences
+
+                    split_method = KFold(n_splits=_folds)
+
+                    for train_idx, test_idx in split_method.split(_sq):
+                        self.X, self.lengths = combine_sequences(train_idx, _sq)
+                        test_X, test_lengths = combine_sequences(test_idx, _sq)
+                        # append scores for averaging
+                        fold_scores.append(model.score(test_X, test_lengths))
+                    avg_score = map(np.mean, fold_scores)
+                else:
+                    avg_score = model.score(self.X, self.lengths)
+                if avg_score > max_avg_score:
+                    best_model, max_avg_score = model, avg_score
+            except Exception as e:
+                pass
+
+        best_num_components = self.n_constant
+        if max_avg_score:
+            best_num_components = best_model.n_components[max_avg_score]
+        return self.base_model(best_num_components)
