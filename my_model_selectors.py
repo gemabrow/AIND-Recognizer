@@ -75,9 +75,29 @@ class SelectorBIC(ModelSelector):
         :return: GaussianHMM object
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
+        best_model = None
+        min_bic = float('inf')
 
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        for n in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                # try fitting model with n_components
+                model = self.base_model(n)
+                # score likelihood
+                logL = model.score(self.X, self.lengths)
+
+                d = model.n_features
+                # ref: https://ai-nd.slack.com/files/U3V9K6UHL/F4S90AJFR/number_of_parameters_in_bic.txt
+                # since initial distribution estimated,
+                # not all parameters are considered free
+                p = n ** 2 + 2 * d * n - 1
+                # BIC = -2 * logL + p * logN
+                bic_score = -2 * log_l + p * np.log(d)
+                if bic_score < min_bic:
+                    best_model, min_bic = model, bic_score
+            except:
+                pass
+
+        return best_model
 
 
 class SelectorDIC(ModelSelector):
@@ -92,9 +112,26 @@ class SelectorDIC(ModelSelector):
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
+        best_model = None
+        max_dic = float('-inf')
+        hwords = [self.hwords[word] for word in self.words if word != self.this_word]
 
-        # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        for n in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                # try fitting model with n_components
+                model = self.base_model(n)
+                # score likelihood of self.this_word
+                score = model.score(self.X, self.lengths)
+                total_score = sum(model.score(_x, _l)
+                                  for _x, _l in hwords)
+                # DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
+                dic_score = score - total_score / len(hwords)
+                if dic_score < max_dic:
+                    best_model, max_dic = model, dic_score
+            except:
+                pass
+
+        return best_model
 
 
 class SelectorCV(ModelSelector):
