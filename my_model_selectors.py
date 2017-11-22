@@ -75,7 +75,7 @@ class SelectorBIC(ModelSelector):
         :return: GaussianHMM object
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        best_n = self.n_constant
+        best_num_components = self.n_constant
         min_bic = float('inf')
 
         for n in range(self.min_n_components, self.max_n_components + 1):
@@ -96,11 +96,11 @@ class SelectorBIC(ModelSelector):
                 # pylint:disable=maybe-no-member
                 bic_score = -2 * logL + p * np.log(d)
                 if bic_score < min_bic:
-                    best_n, min_bic = n, bic_score
+                    best_num_components, min_bic = n, bic_score
             except Exception as e:
                 pass
 
-        return self.base_model(best_n)
+        return self.base_model(best_num_components)
 
 
 class SelectorDIC(ModelSelector):
@@ -112,12 +112,10 @@ class SelectorDIC(ModelSelector):
     https://pdfs.semanticscholar.org/ed3d/7c4a5f607201f3848d4c02dd9ba17c791fc2.pdf
     DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
     '''
-    # total_score = sum(model.score(_x, _l)
-    #                   for _x, _l in _hwords)
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        best_n = self.n_constant
+        best_num_components = self.n_constant
         max_dic = float('-inf')
 
         other_words = {word for word in self.words
@@ -136,13 +134,13 @@ class SelectorDIC(ModelSelector):
                     sum_other += model.score(other_x, other_ls)
                 # DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
                 dic_score = score - (sum_other / len(other_words))
-                
+
                 if dic_score > max_dic:
-                    best_n, max_dic = n, dic_score
+                    best_num_components, max_dic = n, dic_score
             except Exception as e:
                 pass
 
-        return self.base_model(best_n)
+        return self.base_model(best_num_components)
 
 
 class SelectorCV(ModelSelector):
@@ -152,33 +150,34 @@ class SelectorCV(ModelSelector):
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        best_n = self.n_constant
+        best_num_components = self.n_constant
         max_avg_score = float('-inf')
 
         for n in range(self.min_n_components, self.max_n_components + 1):
             try:
-                _seq = self.sequences
-                model = self.base_model(n)
                 scores = []
+                seq = self.sequences
+                model = self.base_model(n)
 
-                if len(_seq) >= 2:
-                    _folds = min(len(_seq), 3)
-                    split_method = KFold(n_splits=_folds)
+                if len(seq) > 1:
+                    folds = min(len(seq), 3)
+                    split_method = KFold(n_splits=folds)
 
-                    for train_idx, test_idx in split_method.split(_seq):
+                    for train_idx, test_idx in split_method.split(seq):
                         self.X, self.lengths = combine_sequences(train_idx,
-                                                                 _seq)
+                                                                 seq)
                         test_X, test_lengths = combine_sequences(test_idx,
-                                                                 _seq)
+                                                                 seq)
                         # append scores for averaging
                         scores.append(model.score(test_X, test_lengths))
                 else:
+                    # splitting not possible, just append model score
                     scores.append(model.score(self.X, self.lengths))
 
                 avg_score = np.mean(scores)
                 if avg_score > max_avg_score:
-                    best_n, max_avg_score = n, avg_score
+                    best_num_components, max_avg_score = n, avg_score
             except Exception as e:
                 pass
 
-        return self.base_model(best_n)
+        return self.base_model(best_num_components)
