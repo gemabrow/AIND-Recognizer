@@ -51,6 +51,8 @@ class SelectorConstant(ModelSelector):
     """ select the model with value self.n_constant
 
     """
+    def __str__(self):
+        return "SelectorConstant"
 
     def select(self):
         """ select based on n_constant value
@@ -67,6 +69,8 @@ class SelectorBIC(ModelSelector):
     http://www2.imm.dtu.dk/courses/02433/doc/ch6_slides.pdf
     Bayesian information criteria: BIC = -2 * logL + p * logN
     """
+    def __str__(self):
+        return "SelectorBIC"
 
     def select(self):
         """ select the best model for self.this_word based on
@@ -112,6 +116,8 @@ class SelectorDIC(ModelSelector):
     https://pdfs.semanticscholar.org/ed3d/7c4a5f607201f3848d4c02dd9ba17c791fc2.pdf
     DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
     '''
+    def __str__(self):
+        return "SelectorDIC"
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -147,6 +153,8 @@ class SelectorCV(ModelSelector):
     ''' select best model based on average log Likelihood of cross-validation folds
 
     '''
+    def __str__(self):
+        return "SelectorCV"
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
